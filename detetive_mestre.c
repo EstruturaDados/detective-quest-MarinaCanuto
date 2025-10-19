@@ -1,47 +1,259 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#define STR 64
+#define HT  31  
 
-// Desafio Detective Quest
-// Tema 4 - Árvores e Tabela Hash
-// Este código inicial serve como base para o desenvolvimento das estruturas de navegação, pistas e suspeitos.
-// Use as instruções de cada região para desenvolver o sistema completo com árvore binária, árvore de busca e tabela hash.
+// ------------------------- BST de Pistas -------------------------
+typedef struct Nodo {
+    char pista[STR];
+    struct Nodo *esq, *dir;
+} Nodo;
 
-int main() {
-
-    // 🌱 Nível Novato: Mapa da Mansão com Árvore Binária
-    //
-    // - Crie uma struct Sala com nome, e dois ponteiros: esquerda e direita.
-    // - Use funções como criarSala(), conectarSalas() e explorarSalas().
-    // - A árvore pode ser fixa: Hall de Entrada, Biblioteca, Cozinha, Sótão etc.
-    // - O jogador deve poder explorar indo à esquerda (e) ou à direita (d).
-    // - Finalize a exploração com uma opção de saída (s).
-    // - Exiba o nome da sala a cada movimento.
-    // - Use recursão ou laços para caminhar pela árvore.
-    // - Nenhuma inserção dinâmica é necessária neste nível.
-
-    // 🔍 Nível Aventureiro: Armazenamento de Pistas com Árvore de Busca
-    //
-    // - Crie uma struct Pista com campo texto (string).
-    // - Crie uma árvore binária de busca (BST) para inserir as pistas coletadas.
-    // - Ao visitar salas específicas, adicione pistas automaticamente com inserirBST().
-    // - Implemente uma função para exibir as pistas em ordem alfabética (emOrdem()).
-    // - Utilize alocação dinâmica e comparação de strings (strcmp) para organizar.
-    // - Não precisa remover ou balancear a árvore.
-    // - Use funções para modularizar: inserirPista(), listarPistas().
-    // - A árvore de pistas deve ser exibida quando o jogador quiser revisar evidências.
-
-    // 🧠 Nível Mestre: Relacionamento de Pistas com Suspeitos via Hash
-    //
-    // - Crie uma struct Suspeito contendo nome e lista de pistas associadas.
-    // - Crie uma tabela hash (ex: array de ponteiros para listas encadeadas).
-    // - A chave pode ser o nome do suspeito ou derivada das pistas.
-    // - Implemente uma função inserirHash(pista, suspeito) para registrar relações.
-    // - Crie uma função para mostrar todos os suspeitos e suas respectivas pistas.
-    // - Adicione um contador para saber qual suspeito foi mais citado.
-    // - Exiba ao final o “suspeito mais provável” baseado nas pistas coletadas.
-    // - Para hashing simples, pode usar soma dos valores ASCII do nome ou primeira letra.
-    // - Em caso de colisão, use lista encadeada para tratar.
-    // - Modularize com funções como inicializarHash(), buscarSuspeito(), listarAssociacoes().
-
-    return 0;
+Nodo* bstCriar(const char* s){
+    Nodo* n = (Nodo*)malloc(sizeof(Nodo));
+    if(!n){ perror("malloc"); exit(EXIT_FAILURE); }
+    strncpy(n->pista, s, STR-1); n->pista[STR-1]='\0';
+    n->esq = n->dir = NULL;
+    return n;
+}
+Nodo* bstInserir(Nodo* r, const char* s){
+    if(!r) return bstCriar(s);
+    int cmp = strcmp(s, r->pista);
+    if(cmp<0) r->esq = bstInserir(r->esq, s);
+    else if(cmp>0) r->dir = bstInserir(r->dir, s);
+    return r; /* se igual, ignora duplicata */
+}
+void bstInOrdem(Nodo* r){
+    if(!r) return;
+    bstInOrdem(r->esq);
+    printf("- %s\n", r->pista);
+    bstInOrdem(r->dir);
+}
+void bstLiberar(Nodo* r){
+    if(!r) return;
+    bstLiberar(r->esq); bstLiberar(r->dir);
+    free(r);
 }
 
+// ---------------------- Hash pista -> suspeito -------------------
+typedef struct Entry {
+    char pista[STR];
+    char suspeito[STR];
+    struct Entry* next;
+} Entry;
+
+unsigned long hashStr(const char* s){
+    unsigned long h = 5381;
+    int c;
+    while((c = (unsigned char)*s++)) h = ((h << 5) + h) + (unsigned)c;
+    return h % HT;
+}
+
+typedef struct {
+    Entry* tab[HT];
+} HashPS;
+
+void hpsInit(HashPS* h){ memset(h->tab, 0, sizeof(h->tab)); }
+
+int hpsInsert(HashPS* h, const char* pista, const char* suspeito){
+    unsigned long k = hashStr(pista);
+    for(Entry* e=h->tab[k]; e; e=e->next){
+        if(strcmp(e->pista, pista)==0){
+            return 0; /* já existe */
+        }
+    }
+    Entry* e = (Entry*)malloc(sizeof(Entry));
+    if(!e){ perror("malloc"); exit(EXIT_FAILURE); }
+    strncpy(e->pista, pista, STR-1); e->pista[STR-1]='\0';
+    strncpy(e->suspeito, suspeito, STR-1); e->suspeito[STR-1]='\0';
+    e->next = h->tab[k];
+    h->tab[k] = e;
+    return 1;
+}
+
+const char* hpsGet(HashPS* h, const char* pista){
+    unsigned long k = hashStr(pista);
+    for(Entry* e=h->tab[k]; e; e=e->next){
+        if(strcmp(e->pista, pista)==0) return e->suspeito;
+    }
+    return NULL;
+}
+
+void hpsList(HashPS* h){
+    for(int i=0;i<HT;i++){
+        for(Entry* e=h->tab[i]; e; e=e->next){
+            printf("'%s' -> %s\n", e->pista, e->suspeito);
+        }
+    }
+}
+
+void hpsFree(HashPS* h){
+    for(int i=0;i<HT;i++){
+        Entry* e=h->tab[i];
+        while(e){
+            Entry* nx=e->next;
+            free(e);
+            e=nx;
+        }
+        h->tab[i]=NULL;
+    }
+}
+
+// ----------------- Hash de contagem por suspeito -----------------
+typedef struct SNode {
+    char nome[STR];
+    int  count;
+    struct SNode* next;
+} SNode;
+
+typedef struct {
+    SNode* tab[HT];
+} HashSus;
+
+void hsInit(HashSus* h){ memset(h->tab, 0, sizeof(h->tab)); }
+
+int hsInc(HashSus* h, const char* suspeito){
+    unsigned long k = hashStr(suspeito);
+    for(SNode* n=h->tab[k]; n; n=n->next){
+        if(strcmp(n->nome, suspeito)==0){
+            n->count++;
+            return n->count;
+        }
+    }
+    SNode* n=(SNode*)malloc(sizeof(SNode));
+    if(!n){ perror("malloc"); exit(EXIT_FAILURE); }
+    strncpy(n->nome, suspeito, STR-1); n->nome[STR-1]='\0';
+    n->count=1; n->next=h->tab[k]; h->tab[k]=n;
+    return 1;
+}
+
+void hsList(HashSus* h){
+    for(int i=0;i<HT;i++){
+        for(SNode* n=h->tab[i]; n; n=n->next){
+            printf("%s: %d\n", n->nome, n->count);
+        }
+    }
+}
+
+const char* hsTop(HashSus* h, int* outCount){
+    const char* top=NULL; int best=0;
+    for(int i=0;i<HT;i++){
+        for(SNode* n=h->tab[i]; n; n=n->next){
+            if(n->count > best){ best=n->count; top=n->nome; }
+        }
+    }
+    if(outCount) *outCount=best;
+    return top;
+}
+
+void hsFree(HashSus* h){
+    for(int i=0;i<HT;i++){
+        SNode* n=h->tab[i];
+        while(n){
+            SNode* nx=n->next;
+            free(n);
+            n=nx;
+        }
+        h->tab[i]=NULL;
+    }
+}
+
+// ------------------------- Utilidades I/O ------------------------
+void lerLinha(char* buf, size_t n){
+    if(!fgets(buf, (int)n, stdin)){ buf[0]='\0'; return; }
+    buf[strcspn(buf, "\n")] = '\0';
+}
+void trim(char* s){
+    char* p = s;
+    while(isspace((unsigned char)*p)) p++;
+    if(p!=s) memmove(s,p,strlen(p)+1);
+    size_t L=strlen(s);
+    while(L>0 && isspace((unsigned char)s[L-1])) s[--L]='\0';
+}
+
+// ------------------------------ Main ----------------------------
+int main(void){
+    Nodo* bstPistas = NULL;
+    HashPS mapa; HashSus cont;
+    hpsInit(&mapa); hsInit(&cont);
+
+    puts("=== Detective Quest — Nível Mestre ===");
+    puts("Armazene pistas (BST), relacione pista->suspeito (hash),");
+    puts("e acompanhe contagens de citação por suspeito.\n");
+
+    int op;
+    char pista[STR], suspeito[STR];
+
+    do{
+        puts("\nMenu");
+        puts("1 - Adicionar pista e suspeito");
+        puts("2 - Listar pistas (ordem alfabética)");
+        puts("3 - Consultar suspeito por pista");
+        puts("4 - Listar suspeitos (contagem)");
+        puts("5 - Mostrar suspeito mais citado");
+        puts("0 - Sair");
+        printf("Escolha: ");
+
+        if(scanf("%d",&op)!=1){ puts("Entrada inválida. Encerrando."); break; }
+        getchar(); // consome \n
+
+        switch(op){
+            case 1: {
+                printf("Pista: ");
+                lerLinha(pista, sizeof(pista)); trim(pista);
+                if(pista[0]=='\0'){ puts("Pista vazia."); break; }
+
+                printf("Suspeito: ");
+                lerLinha(suspeito, sizeof(suspeito)); trim(suspeito);
+                if(suspeito[0]=='\0'){ puts("Suspeito vazio."); break; }
+
+                if(!hpsInsert(&mapa, pista, suspeito)){
+                    printf("A pista '%s' já existe (associação mantida).\n", pista);
+                    break;
+                }
+                bstPistas = bstInserir(bstPistas, pista);
+                int c = hsInc(&cont, suspeito);
+                printf("OK: '%s' -> %s (contagem de %s = %d)\n",
+                       pista, suspeito, suspeito, c);
+            } break;
+
+            case 2: {
+                if(!bstPistas) puts("Nenhuma pista registrada.");
+                else{
+                    puts("\nPistas em ordem alfabética:");
+                    bstInOrdem(bstPistas);
+                }
+            } break;
+
+            case 3: {
+                printf("Pista a consultar: ");
+                lerLinha(pista, sizeof(pista)); trim(pista);
+                const char* s = hpsGet(&mapa, pista);
+                if(s) printf("'%s' -> %s\n", pista, s);
+                else  printf("Pista '%s' não encontrada.\n", pista);
+            } break;
+
+            case 4: {
+                puts("\nSuspeitos e contagens:");
+                hsList(&cont);
+            } break;
+
+            case 5: {
+                int n=0; const char* top = hsTop(&cont, &n);
+                if(top) printf("Mais citado: %s (%d)\n", top, n);
+                else    puts("Nenhum suspeito registrado ainda.");
+            } break;
+
+            case 0: puts("Encerrando..."); break;
+            default: puts("Opção inválida.");
+        }
+
+    }while(op!=0);
+
+    bstLiberar(bstPistas);
+    hpsFree(&mapa);
+    hsFree(&cont);
+    return 0;
+}
